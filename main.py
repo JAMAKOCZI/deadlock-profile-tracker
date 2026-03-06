@@ -93,7 +93,7 @@ async def run_for_account(account_id: int) -> None:
             console.print(f"[cyan]Searching for match… (attempt {attempt})[/cyan]")
 
             # Strategy 0: Steam local httpcache (fastest, no API needed)
-            match_id_from_cache = scan_steam_cache_for_match_id()
+            match_id_from_cache = await asyncio.to_thread(scan_steam_cache_for_match_id)
             if match_id_from_cache is not None:
                 console.print(f"[green]Detected match from Steam cache: {match_id_from_cache}[/green]")
                 match_data = await get_match_by_id(match_id_from_cache, client)

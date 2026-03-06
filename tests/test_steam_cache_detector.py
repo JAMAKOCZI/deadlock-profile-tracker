@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from modules.steam_cache_detector import (
     _extract_match_id_from_file,
     _find_httpcache_dir,
@@ -102,6 +100,25 @@ class TestParseMatchId:
         url = b"http://replay2.valve.net/1422450/12121212/meta"
         assert _parse_match_id(prefix + url) == 12121212
 
+    def test_non_replay_valve_host_before_valid_url(self) -> None:
+        # First .valve.net occurrence belongs to a non-replay host; the second
+        # should still be found and parsed correctly.
+        data = (
+            b"http://cdn.valve.net/some/other/path "
+            b"http://replay9.valve.net/1422450/13131313/meta"
+        )
+        assert _parse_match_id(data) == 13131313
+
+    def test_wrong_app_id_returns_none(self) -> None:
+        # Path starts with a different app id — should not be parsed.
+        data = self._make_data("http://replay1.valve.net/9999999/12345/foo")
+        assert _parse_match_id(data) is None
+
+    def test_app_id_in_match_id_segment_returns_none(self) -> None:
+        # 1422450 appears only as the match_id segment, not as parts[1].
+        data = self._make_data("http://replay1.valve.net/9999999/1422450/foo")
+        assert _parse_match_id(data) is None
+
 
 # ── _extract_match_id_from_file ──────────────────────────────────────
 
@@ -188,9 +205,9 @@ class TestScanSteamCacheForMatchId:
         result = scan_steam_cache_for_match_id()
         assert result == 60606060
 
-    def test_returns_none_on_unexpected_exception(self, monkeypatch) -> None:
+    def test_returns_none_on_oserror(self, monkeypatch) -> None:
         def _raise():
-            raise RuntimeError("unexpected")
+            raise OSError("simulated OS error")
 
         monkeypatch.setattr(
             "modules.steam_cache_detector._find_httpcache_dir", _raise

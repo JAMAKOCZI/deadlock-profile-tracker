@@ -46,7 +46,7 @@ def scan_steam_cache_for_match_id() -> Optional[int]:
             match_id = _extract_match_id_from_file(filepath)
             if match_id is not None:
                 return match_id
-    except Exception:  # noqa: BLE001
+    except OSError:
         return None
 
     return None
@@ -126,7 +126,9 @@ def _parse_match_id(data: bytes) -> Optional[int]:
     """Extract a Deadlock match ID from raw cache file bytes.
 
     Searches for the ``b".valve.net"`` marker, reconstructs the host and
-    URL path, and parses the match ID from the path segment.
+    URL path, and parses the match ID from the path segment.  All occurrences
+    of the marker are tried in order so that a non-replay Valve host earlier
+    in the buffer does not prevent detection of a valid replay URL.
 
     Args:
         data: Up to :data:`_MAX_BYTES` bytes of cache file content.
@@ -134,47 +136,58 @@ def _parse_match_id(data: bytes) -> Optional[int]:
     Returns:
         The match ID as an :class:`int`, or ``None`` if not found.
     """
-    marker_pos = data.find(_VALVE_MARKER)
-    if marker_pos == -1:
-        return None
+    search_start = 0
 
-    # Walk backwards from the marker to find the start of the host.
-    host_start = marker_pos
-    while host_start > 0 and _is_host_char(data[host_start - 1]):
-        host_start -= 1
+    while True:
+        marker_pos = data.find(_VALVE_MARKER, search_start)
+        if marker_pos == -1:
+            return None
 
-    host_end = marker_pos + len(_VALVE_MARKER)
-    host = data[host_start:host_end].decode("ascii", errors="replace")
+        # Walk backwards from the marker to find the start of the host.
+        host_start = marker_pos
+        while host_start > 0 and _is_host_char(data[host_start - 1]):
+            host_start -= 1
 
-    if not host.startswith("replay") or ".valve.net" not in host:
-        return None
+        host_end = marker_pos + len(_VALVE_MARKER)
+        host = data[host_start:host_end].decode("ascii", errors="replace")
 
-    # Find the first '/' after the host to start the URL path.
-    slash_pos = data.find(b"/", host_end)
-    if slash_pos == -1:
-        return None
+        # Only consider replay hosts; otherwise, continue searching.
+        if not host.startswith("replay") or ".valve.net" not in host:
+            search_start = marker_pos + len(_VALVE_MARKER)
+            continue
 
-    # Find the earliest end marker after the path start.
-    path_end = len(data)
-    for marker in _PATH_END_MARKERS:
-        pos = data.find(marker, slash_pos)
-        if pos != -1 and pos < path_end:
-            path_end = pos
+        # Find the first '/' after the host to start the URL path.
+        slash_pos = data.find(b"/", host_end)
+        if slash_pos == -1:
+            search_start = marker_pos + len(_VALVE_MARKER)
+            continue
 
-    path = data[slash_pos:path_end].decode("ascii", errors="replace")
+        # Find the earliest end marker after the path start.
+        path_end = len(data)
+        for marker in _PATH_END_MARKERS:
+            pos = data.find(marker, slash_pos)
+            if pos != -1 and pos < path_end:
+                path_end = pos
 
-    if _DEADLOCK_APP_ID not in path:
-        return None
+        path = data[slash_pos:path_end].decode("ascii", errors="replace")
 
-    # Path format: /{app_id}/{match_id}/...
-    parts = path.split("/")
-    if len(parts) < 3:
-        return None
+        # Path format: /{app_id}/{match_id}/...
+        parts = path.split("/")
+        if len(parts) < 3:
+            search_start = marker_pos + len(_VALVE_MARKER)
+            continue
 
-    try:
-        return int(parts[2])
-    except ValueError:
-        return None
+        # Expect a leading slash and the Deadlock app id as the first segment.
+        if parts[0] != "" or parts[1] != _DEADLOCK_APP_ID:
+            search_start = marker_pos + len(_VALVE_MARKER)
+            continue
+
+        try:
+            return int(parts[2])
+        except ValueError:
+            # Malformed match id; keep searching for another replay URL.
+            search_start = marker_pos + len(_VALVE_MARKER)
+            continue
 
 
 def _is_host_char(byte: int) -> bool:
