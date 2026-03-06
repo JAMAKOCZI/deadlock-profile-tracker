@@ -31,6 +31,7 @@ from modules.display import display_match
 from modules.match_finder import find_active_match, get_active_matches, get_match_by_id
 from modules.player_extractor import extract_players
 from modules.profile_fetcher import fetch_profiles
+from modules.steam_cache_detector import scan_steam_cache_for_match_id
 from modules.steam_detector import detect_steam_user
 from modules.steamid_converter import steam_id64_to_account_id
 from rich.console import Console
@@ -86,11 +87,26 @@ async def run_auto_detect() -> None:
 async def run_for_account(account_id: int) -> None:
     """Find a match for *account_id* and display the 12 player profiles."""
     async with httpx.AsyncClient() as client:
-        console.print(f"[cyan]Searching for match with account_id={account_id}…[/cyan]")
-        match_data = await find_active_match(account_id, client)
-        if match_data is None:
-            console.print("[red]No active or recent match found for this player.[/red]")
-            return
+        attempt = 0
+        while True:
+            attempt += 1
+            console.print(f"[cyan]Searching for match… (attempt {attempt})[/cyan]")
+
+            # Strategy 0: Steam local httpcache (fastest, no API needed)
+            match_id_from_cache = scan_steam_cache_for_match_id()
+            if match_id_from_cache is not None:
+                console.print(f"[green]Detected match from Steam cache: {match_id_from_cache}[/green]")
+                match_data = await get_match_by_id(match_id_from_cache, client)
+                if match_data is not None:
+                    break
+
+            # Strategy A + B: API-based detection
+            match_data = await find_active_match(account_id, client)
+            if match_data is not None:
+                break
+
+            console.print(f"[yellow]No match found. Retrying in 15 seconds…[/yellow]")
+            await asyncio.sleep(15)
 
         match = _build_match(match_data)
         console.print(f"[green]Found match {match.match_id} — fetching player profiles…[/green]")
