@@ -149,3 +149,27 @@ class TestGetMatchById:
 
         assert result is None
         assert "/v1/matches/active" not in requests_made
+
+    async def test_empty_match_info_is_normalised(self):
+        """metadata response with empty match_info should still drop the key."""
+        match_data = {"match_id": 40, "match_info": {}}
+        transport = _mock_transport({
+            "/v1/matches/40/metadata": (200, match_data),
+        })
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            result = await get_match_by_id(40, client)
+        assert result is not None
+        assert result["match_id"] == 40
+        assert "match_info" not in result
+
+    async def test_non_dict_match_info_is_dropped(self):
+        """metadata response with non-dict match_info should drop the key."""
+        match_data = {"match_id": 41, "match_info": "unexpected_string"}
+        transport = _mock_transport({
+            "/v1/matches/41/metadata": (200, match_data),
+        })
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            result = await get_match_by_id(41, client)
+        assert result is not None
+        assert result["match_id"] == 41
+        assert "match_info" not in result

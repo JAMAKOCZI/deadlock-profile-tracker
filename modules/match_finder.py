@@ -126,14 +126,16 @@ async def _try_metadata_match(
         data = resp.json()
         if not isinstance(data, dict) or not data:
             return None
-        # Normalise: hoist match_info fields up to the top level.
-        # Top-level fields in data (e.g. match_id) take precedence over
-        # same-named fields inside match_info.
-        match_info = data.get("match_info", {})
-        if isinstance(match_info, dict) and match_info:
+        match_info = data.get("match_info")
+        if isinstance(match_info, dict):
+            # Normalise even when match_info is empty to keep the shape stable.
             merged: Dict[str, Any] = {**match_info, **data}
             merged.pop("match_info", None)
             return merged
+        if "match_info" in data:
+            # Drop non-dict match_info values to keep the response flat.
+            data = dict(data)
+            data.pop("match_info", None)
         return data
     except (httpx.HTTPStatusError, httpx.RequestError):
         pass
