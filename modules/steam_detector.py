@@ -97,7 +97,7 @@ def parse_loginusers_vdf(text: str) -> List[SteamUser]:
     #   }
     # We use a regex-based approach for robustness.
     block_pattern = re.compile(
-        r'"(\d{17})"\s*\{([^}]*)\}',
+        r'"(\d{16,17})"\s*\{([^}]*)\}',
         re.DOTALL,
     )
     kv_pattern = re.compile(r'"(\w+)"\s+"([^"]*)"')
