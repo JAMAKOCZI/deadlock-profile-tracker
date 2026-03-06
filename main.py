@@ -27,11 +27,16 @@ import sys
 import httpx
 
 from models.match import Match
+from modules.console_log_detector import (
+    find_match_id_in_console_log,
+    get_console_log_path,
+    is_deadlock_running,
+    launch_with_condebug,
+)
 from modules.display import display_match
 from modules.match_finder import find_active_match, get_active_matches, get_match_by_id
 from modules.player_extractor import extract_players
 from modules.profile_fetcher import fetch_profiles
-from modules.steam_cache_detector import scan_steam_cache_for_match_id
 from modules.steam_detector import detect_steam_user
 from modules.steamid_converter import steam_id64_to_account_id
 from rich.console import Console
@@ -44,35 +49,23 @@ console = Console()
 
 
 async def run_auto_detect() -> None:
-    """Auto-detect the local Steam user and look up their match."""
-    console.print(
-        Panel(
-            "[bold cyan]Deadlock Profile Tracker[/bold cyan]\n"
-            "Detecting your Steam account…",
-            border_style="cyan",
-        )
-    )
+    """Auto-detect the local Steam user and wait for a match via console.log."""
+    console.print(Panel(
+        "[bold cyan]Deadlock Profile Tracker[/bold cyan]\n"
+        "Detecting your Steam account…",
+        border_style="cyan",
+    ))
 
     user = detect_steam_user()
     if user is None:
-        console.print(
-            "[red]Could not detect a logged-in Steam account.[/red]\n"
-            "Make sure Steam is installed and you have logged in at least once.\n"
-            "You can also specify a player manually:\n"
-            "  [dim]deadlock-tracker --account-id 123456789[/dim]"
-        )
+        console.print("[red]Could not detect a logged-in Steam account.[/red]")
         _wait_for_exit()
         return
 
     try:
         account_id = steam_id64_to_account_id(user.steam_id64)
     except ValueError:
-        console.print(
-            "[red]Detected Steam account has an invalid SteamID64 and could not be used.[/red]\n"
-            "This can happen if your local Steam configuration contains a malformed or test account entry.\n"
-            "You can specify a player manually instead:\n"
-            "  [dim]deadlock-tracker --account-id 123456789[/dim]"
-        )
+        console.print("[red]Detected Steam account has an invalid SteamID64.[/red]")
         _wait_for_exit()
         return
 
@@ -80,7 +73,55 @@ async def run_auto_detect() -> None:
         f"[green]Detected Steam user:[/green] [bold]{user.persona_name}[/bold] "
         f"(account_id={account_id})\n"
     )
-    await run_for_account(account_id)
+
+    log_path = get_console_log_path()
+
+    if log_path is None:
+        if is_deadlock_running():
+            console.print(
+                "[yellow]Deadlock is running but without [bold]-condebug[/bold].[/yellow]\n"
+                "This app needs Deadlock to be launched with [bold]-condebug[/bold] to detect matches.\n\n"
+                "[cyan]Please close Deadlock and press Enter — the app will relaunch it automatically.[/cyan]"
+            )
+            input()
+
+        console.print("[green]Launching Deadlock with -condebug…[/green]")
+        launch_with_condebug()
+
+        console.print("[yellow]Waiting for Deadlock to start…[/yellow]")
+        for _ in range(60):
+            await asyncio.sleep(2)
+            if is_deadlock_running():
+                break
+        else:
+            console.print("[red]Deadlock did not start in time.[/red]")
+            _wait_for_exit()
+            return
+
+        console.print("[yellow]Waiting for console.log to appear…[/yellow]")
+        for _ in range(30):
+            await asyncio.sleep(2)
+            log_path = get_console_log_path()
+            if log_path is not None:
+                break
+        else:
+            console.print("[red]console.log did not appear.[/red]")
+            _wait_for_exit()
+            return
+
+    console.print("[cyan]Waiting for match to start… (enter queue and accept a match)[/cyan]")
+    elapsed = 0
+    while True:
+        match_id = find_match_id_in_console_log()
+        if match_id is not None:
+            break
+        await asyncio.sleep(2)
+        elapsed += 2
+        if elapsed % 10 == 0:
+            console.print(f"[dim]Still waiting… ({elapsed}s)[/dim]")
+
+    console.print(f"[green]Match detected: {match_id}[/green]")
+    await run_for_match_id(match_id)
     _wait_for_exit()
 
 
@@ -92,15 +133,6 @@ async def run_for_account(account_id: int) -> None:
             attempt += 1
             console.print(f"[cyan]Searching for match… (attempt {attempt})[/cyan]")
 
-            # Strategy 0: Steam local httpcache (fastest, no API needed)
-            match_id_from_cache = await asyncio.to_thread(scan_steam_cache_for_match_id)
-            if match_id_from_cache is not None:
-                console.print(f"[green]Detected match from Steam cache: {match_id_from_cache}[/green]")
-                match_data = await get_match_by_id(match_id_from_cache, client)
-                if match_data is not None:
-                    break
-
-            # Strategy A + B: API-based detection
             match_data = await find_active_match(account_id, client)
             if match_data is not None:
                 break

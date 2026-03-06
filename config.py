@@ -14,3 +14,6 @@ DEADLOCK_API_BASE_URL: str = "https://api.deadlock-api.com"
 
 # HTTP request timeout in seconds
 REQUEST_TIMEOUT: float = 15.0
+
+# Optional: override Deadlock install path (auto-detected if empty)
+DEADLOCK_PATH: str = os.getenv("DEADLOCK_PATH", "")

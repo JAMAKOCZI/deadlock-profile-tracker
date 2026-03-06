@@ -72,9 +72,20 @@ class TestGetActiveMatches:
 
 @pytest.mark.asyncio
 class TestGetMatchById:
+    async def test_finds_match_via_direct_endpoint(self):
+        match_data = {"match_id": 20, "players": []}
+        transport = _mock_transport({
+            "/v1/matches/20": (200, match_data),
+        })
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            result = await get_match_by_id(20, client)
+        assert result is not None
+        assert result["match_id"] == 20
+
     async def test_finds_match(self):
         matches = [{"match_id": 10}, {"match_id": 20}]
         transport = _mock_transport({
+            "/v1/matches/20": (404, None),
             "/v1/matches/active": (200, matches),
         })
         async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
@@ -85,6 +96,7 @@ class TestGetMatchById:
     async def test_returns_none_for_missing(self):
         matches = [{"match_id": 10}]
         transport = _mock_transport({
+            "/v1/matches/999": (404, None),
             "/v1/matches/active": (200, matches),
         })
         async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
