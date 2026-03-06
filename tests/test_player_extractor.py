@@ -65,6 +65,34 @@ class TestExtractPlayers:
     def test_missing_players_key(self):
         assert extract_players({"match_id": 123}) == []
 
+    def test_players_from_match_info_fallback(self):
+        """extract_players should fall back to match_info.players."""
+        match_data = {
+            "match_id": 999,
+            "match_info": {
+                "players": [
+                    {"account_id": 101, "team": 0, "hero_id": 5},
+                    {"account_id": 202, "team": 1, "hero_id": 6},
+                ],
+            },
+        }
+        players = extract_players(match_data)
+        assert len(players) == 2
+        assert players[0].account_id == 101
+        assert players[1].account_id == 202
+
+    def test_top_level_players_takes_precedence_over_match_info(self):
+        """Top-level players key should take precedence over match_info.players."""
+        match_data = {
+            "players": [{"account_id": 1, "team": 0}],
+            "match_info": {
+                "players": [{"account_id": 999, "team": 1}],
+            },
+        }
+        players = extract_players(match_data)
+        assert len(players) == 1
+        assert players[0].account_id == 1
+
     def test_full_6v6_match(self):
         team_0 = [{"account_id": i, "team": 0, "hero_id": i} for i in range(1, 7)]
         team_1 = [{"account_id": i, "team": 1, "hero_id": i} for i in range(7, 13)]
