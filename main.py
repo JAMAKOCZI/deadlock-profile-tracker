@@ -149,10 +149,22 @@ async def run_for_account(account_id: int) -> None:
 async def run_for_match_id(match_id: int) -> None:
     """Display player profiles for a specific *match_id*."""
     async with httpx.AsyncClient() as client:
-        console.print(f"[cyan]Looking up match_id={match_id}…[/cyan]")
-        match_data = await get_match_by_id(match_id, client)
+        match_data = None
+        max_attempts = 5
+        retry_delay = 5
+        for attempt in range(1, max_attempts + 1):
+            console.print(f"[cyan]Looking up match_id={match_id}… (attempt {attempt}/{max_attempts})[/cyan]")
+            match_data = await get_match_by_id(match_id, client)
+            if match_data is not None:
+                break
+            if attempt < max_attempts:
+                console.print(
+                    f"[yellow]Match not yet available. Retrying in {retry_delay}s…[/yellow]"
+                )
+                await asyncio.sleep(retry_delay)
+
         if match_data is None:
-            console.print("[red]Match not found among currently active matches.[/red]")
+            console.print("[red]Match not found. The match may not be indexed yet or the ID is invalid.[/red]")
             return
 
         match = _build_match(match_data)

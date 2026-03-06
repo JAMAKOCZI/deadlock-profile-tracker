@@ -21,7 +21,14 @@ def extract_players(match_data: Dict[str, Any]) -> List[Player]:
         A list of :class:`Player` objects (up to 12 for a standard
         6 v 6 match).
     """
-    raw_players: List[Dict[str, Any]] = match_data.get("players", [])
+    if "players" in match_data:
+        raw_players: List[Dict[str, Any]] = match_data.get("players") or []
+    else:
+        match_info = match_data.get("match_info")
+        if isinstance(match_info, dict):
+            raw_players = match_info.get("players") or []
+        else:
+            raw_players = []
     players: List[Player] = []
 
     for rp in raw_players:

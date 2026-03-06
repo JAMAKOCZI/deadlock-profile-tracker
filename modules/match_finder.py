@@ -53,19 +53,17 @@ async def get_match_by_id(
 ) -> Optional[Dict[str, Any]]:
     """Look up a specific match by ID.
 
-    First attempts a direct ``/v1/matches/{match_id}`` API call so that any
-    match can be retrieved regardless of whether it is in the top-200 active
-    list.  Falls back to scanning the active list for backward compatibility.
+    Strategy:
+      1. Try ``/v1/matches/{match_id}/metadata`` — works for any match (active
+         or finished) regardless of the top-200 active list.
+      2. Fallback to ``/v1/matches/{match_id}`` — finished-match endpoint for
+         backward compatibility.
     """
-    direct = await _try_direct_match(match_id, client)
-    if direct is not None:
-        return direct
+    metadata = await _try_metadata_match(match_id, client)
+    if metadata is not None:
+        return metadata
 
-    active = await get_active_matches(client)
-    for m in active:
-        if m.get("match_id") == match_id:
-            return m
-    return None
+    return await _try_direct_match(match_id, client)
 
 
 # ── private helpers ──────────────────────────────────────────────────
@@ -106,6 +104,39 @@ async def _try_recent_match(
             return None
         # Return the most recent match (first entry, sorted by start_time desc)
         return matches[0]
+    except (httpx.HTTPStatusError, httpx.RequestError):
+        pass
+    return None
+
+
+async def _try_metadata_match(
+    match_id: int, client: httpx.AsyncClient
+) -> Optional[Dict[str, Any]]:
+    """Query ``/v1/matches/{match_id}/metadata`` for any match (active or finished).
+
+    Normalises the response into the flat structure the rest of the app
+    expects by hoisting ``match_info`` fields to the top level.
+    """
+    url = f"{config.DEADLOCK_API_BASE_URL}/v1/matches/{match_id}/metadata"
+    try:
+        resp = await client.get(url, timeout=config.REQUEST_TIMEOUT)
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        data = resp.json()
+        if not isinstance(data, dict) or not data:
+            return None
+        match_info = data.get("match_info")
+        if isinstance(match_info, dict):
+            # Normalise even when match_info is empty to keep the shape stable.
+            merged: Dict[str, Any] = {**match_info, **data}
+            merged.pop("match_info", None)
+            return merged
+        if "match_info" in data:
+            # Drop non-dict match_info values to keep the response flat.
+            data = dict(data)
+            data.pop("match_info", None)
+        return data
     except (httpx.HTTPStatusError, httpx.RequestError):
         pass
     return None

@@ -72,9 +72,49 @@ class TestGetActiveMatches:
 
 @pytest.mark.asyncio
 class TestGetMatchById:
-    async def test_finds_match_via_direct_endpoint(self):
+    async def test_finds_match_via_metadata_endpoint(self):
+        match_data = {
+            "match_id": 20,
+            "match_info": {"players": [], "game_mode": 2},
+        }
+        transport = _mock_transport({
+            "/v1/matches/20/metadata": (200, match_data),
+        })
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            result = await get_match_by_id(20, client)
+        assert result is not None
+        assert result["match_id"] == 20
+        # match_info fields should be hoisted to top level
+        assert result["game_mode"] == 2
+        assert "match_info" not in result
+
+    async def test_metadata_response_normalisation(self):
+        """Fields from match_info are hoisted to the top level."""
+        match_data = {
+            "match_id": 30,
+            "match_info": {
+                "players": [{"account_id": 1, "team": 0}],
+                "game_mode": 3,
+                "region_mode": 2,
+            },
+        }
+        transport = _mock_transport({
+            "/v1/matches/30/metadata": (200, match_data),
+        })
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            result = await get_match_by_id(30, client)
+        assert result is not None
+        assert result["match_id"] == 30
+        assert result["game_mode"] == 3
+        assert result["region_mode"] == 2
+        assert len(result["players"]) == 1
+        assert "match_info" not in result
+
+    async def test_falls_back_to_direct_endpoint(self):
+        """Falls back to /v1/matches/{id} when metadata returns 404."""
         match_data = {"match_id": 20, "players": []}
         transport = _mock_transport({
+            "/v1/matches/20/metadata": (404, None),
             "/v1/matches/20": (200, match_data),
         })
         async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
@@ -82,23 +122,54 @@ class TestGetMatchById:
         assert result is not None
         assert result["match_id"] == 20
 
-    async def test_finds_match(self):
-        matches = [{"match_id": 10}, {"match_id": 20}]
+    async def test_returns_none_when_both_endpoints_fail(self):
         transport = _mock_transport({
-            "/v1/matches/20": (404, None),
-            "/v1/matches/active": (200, matches),
-        })
-        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
-            result = await get_match_by_id(20, client)
-        assert result is not None
-        assert result["match_id"] == 20
-
-    async def test_returns_none_for_missing(self):
-        matches = [{"match_id": 10}]
-        transport = _mock_transport({
+            "/v1/matches/999/metadata": (404, None),
             "/v1/matches/999": (404, None),
-            "/v1/matches/active": (200, matches),
         })
         async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
             result = await get_match_by_id(999, client)
         assert result is None
+
+    async def test_active_list_not_consulted(self):
+        """The active-list endpoint should never be called by get_match_by_id."""
+        requests_made = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests_made.append(request.url.path)
+            if request.url.path == "/v1/matches/55/metadata":
+                return httpx.Response(404)
+            if request.url.path == "/v1/matches/55":
+                return httpx.Response(404)
+            return httpx.Response(404)
+
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            result = await get_match_by_id(55, client)
+
+        assert result is None
+        assert "/v1/matches/active" not in requests_made
+
+    async def test_empty_match_info_is_normalised(self):
+        """metadata response with empty match_info should still drop the key."""
+        match_data = {"match_id": 40, "match_info": {}}
+        transport = _mock_transport({
+            "/v1/matches/40/metadata": (200, match_data),
+        })
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            result = await get_match_by_id(40, client)
+        assert result is not None
+        assert result["match_id"] == 40
+        assert "match_info" not in result
+
+    async def test_non_dict_match_info_is_dropped(self):
+        """metadata response with non-dict match_info should drop the key."""
+        match_data = {"match_id": 41, "match_info": "unexpected_string"}
+        transport = _mock_transport({
+            "/v1/matches/41/metadata": (200, match_data),
+        })
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            result = await get_match_by_id(41, client)
+        assert result is not None
+        assert result["match_id"] == 41
+        assert "match_info" not in result
