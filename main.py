@@ -63,7 +63,18 @@ async def run_auto_detect() -> None:
         _wait_for_exit()
         return
 
-    account_id = steam_id64_to_account_id(user.steam_id64)
+    try:
+        account_id = steam_id64_to_account_id(user.steam_id64)
+    except ValueError:
+        console.print(
+            "[red]Detected Steam account has an invalid SteamID64 and could not be used.[/red]\n"
+            "This can happen if your local Steam configuration contains a malformed or test account entry.\n"
+            "You can specify a player manually instead:\n"
+            "  [dim]deadlock-tracker --account-id 123456789[/dim]"
+        )
+        _wait_for_exit()
+        return
+
     console.print(
         f"[green]Detected Steam user:[/green] [bold]{user.persona_name}[/bold] "
         f"(account_id={account_id})\n"
@@ -177,10 +188,13 @@ def main() -> None:
 
     if args.account_id is not None:
         asyncio.run(run_for_account(args.account_id))
+        _wait_for_exit()
     elif args.match_id is not None:
         asyncio.run(run_for_match_id(args.match_id))
+        _wait_for_exit()
     elif args.active:
         asyncio.run(run_active_list())
+        _wait_for_exit()
     else:
         # Default: auto-detect the local Steam user
         asyncio.run(run_auto_detect())
