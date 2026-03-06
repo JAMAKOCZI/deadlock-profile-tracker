@@ -1,6 +1,12 @@
 """Deadlock Profile Tracker — entry point.
 
+When run without arguments the app auto-detects the locally logged-in
+Steam user and looks up their current/recent match.
+
 Usage examples::
+
+    # Auto-detect the local Steam user (default):
+    python main.py
 
     # Look up a player's active match by their SteamID3 (account_id):
     python main.py --account-id 123456789
@@ -16,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 
 import httpx
 
@@ -24,9 +31,45 @@ from modules.display import display_match
 from modules.match_finder import find_active_match, get_active_matches, get_match_by_id
 from modules.player_extractor import extract_players
 from modules.profile_fetcher import fetch_profiles
+from modules.steam_detector import detect_steam_user
+from modules.steamid_converter import steam_id64_to_account_id
 from rich.console import Console
+from rich.panel import Panel
 
 console = Console()
+
+
+# ── core workflows ──────────────────────────────────────────────────
+
+
+async def run_auto_detect() -> None:
+    """Auto-detect the local Steam user and look up their match."""
+    console.print(
+        Panel(
+            "[bold cyan]Deadlock Profile Tracker[/bold cyan]\n"
+            "Detecting your Steam account…",
+            border_style="cyan",
+        )
+    )
+
+    user = detect_steam_user()
+    if user is None:
+        console.print(
+            "[red]Could not detect a logged-in Steam account.[/red]\n"
+            "Make sure Steam is installed and you have logged in at least once.\n"
+            "You can also specify a player manually:\n"
+            "  [dim]deadlock-tracker --account-id 123456789[/dim]"
+        )
+        _wait_for_exit()
+        return
+
+    account_id = steam_id64_to_account_id(user.steam_id64)
+    console.print(
+        f"[green]Detected Steam user:[/green] [bold]{user.persona_name}[/bold] "
+        f"(account_id={account_id})\n"
+    )
+    await run_for_account(account_id)
+    _wait_for_exit()
 
 
 async def run_for_account(account_id: int) -> None:
@@ -102,11 +145,18 @@ def _build_match(data: dict) -> Match:
     )
 
 
+def _wait_for_exit() -> None:
+    """Pause before closing when running as a bundled exe."""
+    if getattr(sys, "frozen", False):
+        console.print("\n[dim]Press Enter to exit…[/dim]")
+        input()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Deadlock Profile Tracker — view player profiles for an active match."
     )
-    group = parser.add_mutually_exclusive_group(required=True)
+    group = parser.add_mutually_exclusive_group(required=False)
     group.add_argument(
         "--account-id",
         type=int,
@@ -131,6 +181,9 @@ def main() -> None:
         asyncio.run(run_for_match_id(args.match_id))
     elif args.active:
         asyncio.run(run_active_list())
+    else:
+        # Default: auto-detect the local Steam user
+        asyncio.run(run_auto_detect())
 
 
 if __name__ == "__main__":
