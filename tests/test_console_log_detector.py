@@ -72,24 +72,30 @@ class TestFindDeadlockInstall:
 
     def test_vdf_scan_finds_deadlock(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.setattr("config.DEADLOCK_PATH", "")
-        # Create a fake Steam library structure with a Deadlock folder
-        deadlock_dir = tmp_path / "steamapps" / "common" / "Deadlock"
-        deadlock_dir.mkdir(parents=True)
-        # Create a libraryfolders.vdf pointing to tmp_path
-        vdf_content = f'"path"  "{tmp_path}"'
-        steam_root = tmp_path / "FakeSteam"
-        steam_root.mkdir()
-        (steam_root / "steamapps").mkdir()
-        (steam_root / "steamapps" / "libraryfolders.vdf").write_text(vdf_content, encoding="utf-8")
 
-        # Patch steam_roots to only include our fake root
-        import modules.console_log_detector as mod
-        monkeypatch.setattr(
-            mod,
-            "_find_deadlock_install",
-            lambda: deadlock_dir,
+        # Build a fake Steam root under tmp_path
+        steam_root = tmp_path / "Steam"
+        steamapps_dir = steam_root / "steamapps"
+        deadlock_dir = steamapps_dir / "common" / "Deadlock"
+        deadlock_dir.mkdir(parents=True)
+
+        # Realistic libraryfolders.vdf pointing a library path at steam_root
+        vdf_content = (
+            '"LibraryFolders"\n'
+            "{\n"
+            '    "1"\n'
+            "    {\n"
+            f'        "path"\t"{steam_root}"\n'
+            "    }\n"
+            "}\n"
         )
-        assert mod._find_deadlock_install() == deadlock_dir
+        (steamapps_dir / "libraryfolders.vdf").write_text(vdf_content, encoding="utf-8")
+
+        # Redirect the PROGRAMFILES(X86) env var so steam_roots includes our fake Steam root
+        monkeypatch.setenv("PROGRAMFILES(X86)", str(tmp_path))
+
+        result = _find_deadlock_install()
+        assert result == deadlock_dir
 
 
 # ── get_console_log_path ─────────────────────────────────────────────

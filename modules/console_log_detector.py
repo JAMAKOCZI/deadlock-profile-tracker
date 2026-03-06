@@ -66,8 +66,8 @@ def _find_deadlock_install() -> Optional[Path]:
     """Try to locate the Deadlock install directory."""
     # 1. Env override
     if config.DEADLOCK_PATH:
-        p = Path(config.DEADLOCK_PATH)
-        if p.exists():
+        p = Path(config.DEADLOCK_PATH).resolve()
+        if p.is_dir():
             return p
 
     # 2. Scan libraryfolders.vdf
@@ -123,11 +123,12 @@ def find_match_id_in_console_log() -> Optional[int]:
     try:
         size = log_path.stat().st_size
         read_start = max(0, size - TAIL_BYTES)
-        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+        with open(log_path, "rb") as f:
             if read_start > 0:
                 f.seek(read_start)
-                f.readline()  # skip partial line
-            content = f.read()
+                f.readline()  # skip partial line (binary)
+            content_bytes = f.read()
+        content = content_bytes.decode("utf-8", errors="replace")
     except OSError:
         return None
 

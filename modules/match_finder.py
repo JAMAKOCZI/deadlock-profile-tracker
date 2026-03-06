@@ -51,7 +51,16 @@ async def get_active_matches(client: httpx.AsyncClient) -> List[Dict[str, Any]]:
 async def get_match_by_id(
     match_id: int, client: httpx.AsyncClient
 ) -> Optional[Dict[str, Any]]:
-    """Look for a specific match_id among currently active matches."""
+    """Look up a specific match by ID.
+
+    First attempts a direct ``/v1/matches/{match_id}`` API call so that any
+    match can be retrieved regardless of whether it is in the top-200 active
+    list.  Falls back to scanning the active list for backward compatibility.
+    """
+    direct = await _try_direct_match(match_id, client)
+    if direct is not None:
+        return direct
+
     active = await get_active_matches(client)
     for m in active:
         if m.get("match_id") == match_id:
@@ -97,6 +106,28 @@ async def _try_recent_match(
             return None
         # Return the most recent match (first entry, sorted by start_time desc)
         return matches[0]
+    except (httpx.HTTPStatusError, httpx.RequestError):
+        pass
+    return None
+
+
+async def _try_direct_match(
+    match_id: int, client: httpx.AsyncClient
+) -> Optional[Dict[str, Any]]:
+    """Query ``/v1/matches/{match_id}`` directly.
+
+    This endpoint works for any match, not just the top-200 active ones.
+    Returns the match dict on success, or ``None`` on 404 / any HTTP error.
+    """
+    url = f"{config.DEADLOCK_API_BASE_URL}/v1/matches/{match_id}"
+    try:
+        resp = await client.get(url, timeout=config.REQUEST_TIMEOUT)
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, dict) and data:
+            return data
     except (httpx.HTTPStatusError, httpx.RequestError):
         pass
     return None
