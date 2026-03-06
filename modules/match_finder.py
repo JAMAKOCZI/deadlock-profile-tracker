@@ -78,7 +78,7 @@ async def _try_active_match(
             return data[0]
         if isinstance(data, dict) and data.get("match_id"):
             return data
-    except httpx.HTTPStatusError:
+    except (httpx.HTTPStatusError, httpx.RequestError):
         pass
     return None
 
@@ -97,6 +97,6 @@ async def _try_recent_match(
             return None
         # Return the most recent match (first entry, sorted by start_time desc)
         return matches[0]
-    except httpx.HTTPStatusError:
+    except (httpx.HTTPStatusError, httpx.RequestError):
         pass
     return None

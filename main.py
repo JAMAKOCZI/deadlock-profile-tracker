@@ -16,11 +16,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import sys
 
 import httpx
 
-import config
 from models.match import Match
 from modules.display import display_match
 from modules.match_finder import find_active_match, get_active_matches, get_match_by_id
@@ -127,9 +125,9 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if args.account_id:
+    if args.account_id is not None:
         asyncio.run(run_for_account(args.account_id))
-    elif args.match_id:
+    elif args.match_id is not None:
         asyncio.run(run_for_match_id(args.match_id))
     elif args.active:
         asyncio.run(run_active_list())

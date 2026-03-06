@@ -1,7 +1,5 @@
 """Tests for modules/match_finder.py — uses httpx mock transport."""
 
-import json
-
 import httpx
 import pytest
 

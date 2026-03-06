@@ -23,7 +23,7 @@ def _mock_transport(responses: dict):
 
 @pytest.mark.asyncio
 class TestFetchProfiles:
-    async def test_enriches_player_from_deadlock_api(self):
+    async def test_enriches_player_from_deadlock_api(self, monkeypatch):
         profile = {
             "personaname": "TestUser",
             "avatarfull": "https://example.com/avatar.jpg",
@@ -34,30 +34,21 @@ class TestFetchProfiles:
             "/v1/players/": (200, profile),
         })
         players = [Player(account_id=100, team=0)]
-        # Ensure no Steam API key so we skip Steam fetch
-        original_key = config.STEAM_API_KEY
-        config.STEAM_API_KEY = ""
-        try:
-            async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
-                result = await fetch_profiles(players, client)
-        finally:
-            config.STEAM_API_KEY = original_key
+        monkeypatch.setattr(config, "STEAM_API_KEY", "")
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            result = await fetch_profiles(players, client)
 
         assert len(result) == 1
         assert result[0].persona_name == "TestUser"
         assert result[0].avatar_url == "https://example.com/avatar.jpg"
         assert result[0].country_code == "PL"
 
-    async def test_handles_404_gracefully(self):
+    async def test_handles_404_gracefully(self, monkeypatch):
         transport = _mock_transport({})  # everything returns 404
         players = [Player(account_id=999, team=1)]
-        original_key = config.STEAM_API_KEY
-        config.STEAM_API_KEY = ""
-        try:
-            async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
-                result = await fetch_profiles(players, client)
-        finally:
-            config.STEAM_API_KEY = original_key
+        monkeypatch.setattr(config, "STEAM_API_KEY", "")
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            result = await fetch_profiles(players, client)
 
         assert len(result) == 1
         assert result[0].persona_name == ""  # unchanged
