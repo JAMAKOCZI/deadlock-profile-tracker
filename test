@@ -1,0 +1,51 @@
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import static org.junit.Assert.*;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.chrome.ChromeDriver;
+
+public class UITest {
+    private WebDriver driver;
+    private LoginPage loginPage;
+
+    @Before
+    public void setup() {
+        System.setProperty("webdriver.chrome.driver", "chromedriver.exe");
+        driver = new ChromeDriver();
+        loginPage = new LoginPage(driver); // Inicjalizacja Page Objectu
+    }
+
+    @After
+    public void tearDown() {
+        if (driver != null) {
+            driver.quit();
+        }
+    }
+
+    @Test
+    public void testLogowaniaPoprawne() {
+        driver.get("https://the-internet.herokuapp.com/login");
+        loginPage.enterCredentials("tomsmith", "SuperSecretPassword!");
+        loginPage.clickLoginButton();
+        
+        assertTrue(driver.getCurrentUrl().endsWith("secure"));
+    }
+
+    @Test
+    public void testBlednegoLogowania() {
+        driver.get("https://the-internet.herokuapp.com/login");
+        loginPage.enterCredentials("niepoprawny", "zlehaslo");
+        loginPage.clickLoginButton();
+        
+        assertTrue(loginPage.isMessageVisible());
+        assertTrue(loginPage.getMessageText().contains("Your username is invalid!"));
+    }
+
+    @Test
+    public void testWidocznosciPrzyciskow() {
+        driver.get("https://the-internet.herokuapp.com/login");
+        // Sprawdzenie widoczności można dodać do LoginPage
+        assertTrue(driver.findElement(org.openqa.selenium.By.className("radius")).isDisplayed());
+    }
+}
