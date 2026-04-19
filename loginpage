@@ -1,0 +1,36 @@
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebDriver;
+
+public class LoginPage {
+    private WebDriver driver;
+
+    public LoginPage(WebDriver driver) {
+        this.driver = driver;
+    }
+
+    // Selektory elementów
+    private By usernameField = By.id("username");
+    private By passwordField = By.id("password");
+    private By loginButton = By.className("radius"); // Zmienione na klasę 'radius' dla herokuapp
+    private By messageArea = By.id("flash");
+
+    // Metody interakcji
+    public void enterCredentials(String username, String password) {
+        driver.findElement(usernameField).clear();
+        driver.findElement(usernameField).sendKeys(username);
+        driver.findElement(passwordField).clear();
+        driver.findElement(passwordField).sendKeys(password);
+    }
+
+    public void clickLoginButton() {
+        driver.findElement(loginButton).click();
+    }
+
+    public String getMessageText() {
+        return driver.findElement(messageArea).getText();
+    }
+    
+    public boolean isMessageVisible() {
+        return driver.findElement(messageArea).isDisplayed();
+    }
+}
