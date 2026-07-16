@@ -39,6 +39,28 @@ class TestExtractPlayers:
         assert p.deaths == 3
         assert p.assists == 7
 
+    def test_populates_metadata_style_kda_and_player_team(self):
+        """Metadata uses kills/deaths/assists and sometimes player_team."""
+        match_data = {
+            "players": [
+                {
+                    "account_id": 100,
+                    "player_team": 1,
+                    "hero_id": 5,
+                    "kills": 8,
+                    "deaths": 2,
+                    "assists": 11,
+                },
+            ],
+        }
+        players = extract_players(match_data)
+        assert len(players) == 1
+        p = players[0]
+        assert p.team == 1
+        assert p.kills == 8
+        assert p.deaths == 2
+        assert p.assists == 11
+
     def test_handles_abandoned_flag(self):
         match_data = {
             "players": [
