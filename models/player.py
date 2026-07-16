@@ -28,6 +28,8 @@ class Player:
     assists: int = 0
     wins: int = 0
     losses: int = 0
+    # True when combat fields were present on the source payload
+    stats_present: bool = False
 
     # Derived helpers
     @property

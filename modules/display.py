@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
@@ -20,26 +21,40 @@ def display_match(
 ) -> None:
     """Render the match overview and both teams to the terminal."""
     _print_header(match)
+    if match.is_partial:
+        console.print(
+            Panel(
+                "[yellow]PARTIAL DATA[/yellow] — only your (or one) player's "
+                "history row is available. Full lobby roster is not indexed yet.\n"
+                "Re-run after the match ends, or when the match appears in the "
+                "active watch list.",
+                border_style="yellow",
+                title="Limited roster",
+            )
+        )
     _print_team_table(
-        "Team 0 (Amber)", match.team_0, match.net_worth_team_0, hero_names
+        "Team 0 (Amber)", match.team_0, match.net_worth_team_0, hero_names, match
     )
     console.print()
     _print_team_table(
-        "Team 1 (Sapphire)", match.team_1, match.net_worth_team_1, hero_names
+        "Team 1 (Sapphire)", match.team_1, match.net_worth_team_1, hero_names, match
     )
     _print_footer(match)
 
 
-# ── private helpers ──────────────────────────────────────────────────
-
-
 def _print_header(match: Match) -> None:
-    status = "[green]LIVE[/green]" if match.is_active else "[red]FINISHED[/red]"
+    if match.is_partial:
+        status = "[yellow]PARTIAL[/yellow]"
+    elif match.is_active:
+        status = "[green]LIVE[/green]"
+    else:
+        status = "[red]FINISHED[/red]"
     duration = _format_duration(match.duration_s)
     header = (
-        f"Match [bold]{match.match_id}[/bold]  •  {status}  •  "
-        f"Duration: {duration}  •  Mode: {match.game_mode or 'N/A'}  •  "
-        f"Region: {match.region or 'N/A'}  •  "
+        f"Match [bold]{escape(str(match.match_id))}[/bold]  •  {status}  •  "
+        f"Duration: {escape(duration)}  •  "
+        f"Mode: {escape(match.game_mode or 'N/A')}  •  "
+        f"Region: {escape(match.region or 'N/A')}  •  "
         f"Spectators: {match.spectators}"
     )
     console.print(Panel(header, title="Deadlock Match", border_style="cyan"))
@@ -50,6 +65,7 @@ def _print_team_table(
     players: List[Player],
     net_worth: int,
     hero_names: Optional[Dict[int, str]] = None,
+    match: Optional[Match] = None,
 ) -> None:
     table = Table(title=f"{title}  (Net Worth: {net_worth:,})", show_lines=True)
 
@@ -61,18 +77,23 @@ def _print_team_table(
     table.add_column("Country", justify="center", width=8)
 
     for idx, p in enumerate(players, start=1):
-        name = p.display_name
+        name = escape(p.display_name)
         if p.abandoned:
             name = f"[strikethrough]{name}[/strikethrough] [red](left)[/red]"
-        win_rate = f"{p.win_rate:.1f}%" if (p.wins + p.losses) > 0 else "N/A"
-        kda = p.kda_str if (p.kills or p.deaths or p.assists) else "—"
+        win_rate = (
+            f"{p.win_rate:.1f}%" if (p.wins + p.losses) > 0 else "N/A"
+        )
+        if p.stats_present:
+            kda = p.kda_str
+        else:
+            kda = "—"
         table.add_row(
             str(idx),
             name,
-            hero_name(p.hero_id, hero_names),
+            escape(hero_name(p.hero_id, hero_names)),
             kda,
             win_rate,
-            p.country_code or "-",
+            escape(p.country_code or "-"),
         )
 
     console.print(table)
@@ -81,12 +102,16 @@ def _print_team_table(
 def _print_footer(match: Match) -> None:
     if match.winning_team is not None:
         console.print(
-            f"\n[bold]Winner:[/bold] Team {match.winning_team}",
+            f"\n[bold]Winner:[/bold] Team {escape(str(match.winning_team))}",
             style="green",
         )
 
 
 def _format_duration(seconds: int) -> str:
-    """Return ``MM:SS`` representation."""
-    m, s = divmod(max(0, int(seconds or 0)), 60)
+    """Return duration as M:SS or H:MM:SS for long matches."""
+    total = max(0, int(seconds or 0))
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
     return f"{m}:{s:02d}"

@@ -214,6 +214,22 @@ class TestScanSteamCacheForMatchId:
         )
         assert scan_steam_cache_for_match_id() is None
 
+    def test_prefers_newest_mtime(self, tmp_path: Path, monkeypatch) -> None:
+        import os
+        import time
+
+        old = tmp_path / "old"
+        new = tmp_path / "new"
+        old.write_bytes(b"http://replay1.valve.net/1422450/11111111/x")
+        new.write_bytes(b"http://replay1.valve.net/1422450/22222222/x")
+        now = time.time()
+        os.utime(old, (now - 3600, now - 3600))
+        os.utime(new, (now, now))
+        monkeypatch.setattr(
+            "modules.steam_cache_detector._find_httpcache_dir", lambda: tmp_path
+        )
+        assert scan_steam_cache_for_match_id() == 22222222
+
 
 # ── _find_httpcache_dir (smoke test) ────────────────────────────────
 

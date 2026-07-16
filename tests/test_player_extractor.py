@@ -81,6 +81,18 @@ class TestExtractPlayers:
         assert len(players) == 1
         assert players[0].account_id == 200
 
+    def test_skips_non_numeric_account_id(self):
+        match_data = {
+            "players": [
+                {"account_id": "not-a-number", "team": 0},
+                {"account_id": 200, "team": 1},
+            ],
+        }
+        players = extract_players(match_data)
+        assert len(players) == 1
+        assert players[0].account_id == 200
+
+
     def test_empty_players_list(self):
         assert extract_players({"players": []}) == []
 

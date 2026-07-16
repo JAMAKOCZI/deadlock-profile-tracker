@@ -93,22 +93,26 @@ Then the match is hydrated and profiles are fetched.
 
 ## Configuration
 
-Copy `.env.example` → `.env` (next to the exe when using the build, or in the project root from source).
+Copy `.env.example` → `.env`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `STEAM_API_KEY` | _(empty)_ | Optional [Steam Web API](https://steamcommunity.com/dev/apikey) key |
-| `DEADLOCK_PATH` | auto | Override Deadlock install path |
-| `DEADLOCK_API_BASE_URL` | `https://api.deadlock-api.com` | API base URL |
+| `STEAM_PATH` | auto | Steam install root (registry / defaults / Flatpak) |
+| `DEADLOCK_PATH` | auto | Override Deadlock game folder |
+| `DEADLOCK_API_BASE_URL` | `https://api.deadlock-api.com` | API base (HTTPS; allowlisted host) |
 | `REQUEST_TIMEOUT` | `15` | HTTP timeout (seconds) |
-| `MAX_ACCOUNT_ATTEMPTS` | `20` | Retries for `--account-id` |
-| `ACCOUNT_RETRY_DELAY_S` | `15` | Delay between account retries |
-| `MAX_MATCH_LOOKUP_ATTEMPTS` | `8` | Retries for `--match-id` |
-| `MATCH_LOOKUP_RETRY_DELAY_S` | `5` | Delay between match-id retries |
+| `MAX_AUTO_WAIT_S` | `600` | Auto-detect max wait before exit |
+| `MAX_ACCOUNT_ATTEMPTS` | `12` | Retries for `--account-id` |
+| `ACCOUNT_RETRY_DELAY_S` | `8` | Delay between account retries |
+| `MAX_MATCH_LOOKUP_ATTEMPTS` | `12` | Retries for `--match-id` |
+| `MATCH_LOOKUP_RETRY_DELAY_S` | `4` | Delay between match-id retries |
+| `FETCH_WIN_RATES` | `1` | Set `0` to skip per-player history (faster) |
+| `CACHE_MAX_AGE_HOURS` | `12` | Ignore older Steam cache replay URLs |
 
 Placeholder values like `your_steam_api_key_here` are ignored.
 
-For the **exe**, place `.env` in the **same folder as `deadlock-tracker.exe`** (CWD alone is not enough under PyInstaller).
+**Exe builds** load `.env` only from the folder next to `deadlock-tracker.exe` (CWD cannot override it). Source installs prefer the project-root `.env`.
 
 ### SteamID conversion
 
@@ -127,9 +131,11 @@ deadlock-profile-tracker/
 │   ├── match.py
 │   └── player.py
 ├── modules/
+│   ├── steam_paths.py              # Steam root / libraries (registry, Flatpak)
 │   ├── steam_detector.py           # loginusers.vdf
-│   ├── steam_cache_detector.py     # Steam appcache/httpcache
+│   ├── steam_cache_detector.py     # Steam appcache/httpcache (newest mtime)
 │   ├── console_log_detector.py     # -condebug console.log
+│   ├── http_client.py              # shared httpx client (UA, trust_env=False)
 │   ├── steamid_converter.py
 │   ├── match_finder.py             # active / history / metadata
 │   ├── player_extractor.py
@@ -147,7 +153,7 @@ deadlock-profile-tracker/
 ## Development
 
 ```bash
-pip install -r requirements.txt pytest pytest-asyncio
+pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
@@ -170,11 +176,13 @@ git push origin v1.0.0
 
 | Problem | What to try |
 |---------|-------------|
-| “Could not detect Steam account” | Log into the Steam client; or use `--account-id` / `--match-id` |
-| Match never found in auto mode | Enter a match; ensure Steam is installed; try relaunching Deadlock with `-condebug` |
-| “Match not found” for a live id | Wait for top-200 watch listing, or try again after the match ends (metadata) |
-| Names stay `Player_<id>` | Network/API issue, or profiles not yet in Deadlock steam cache; optional `STEAM_API_KEY` helps |
-| `.env` ignored by exe | Put `.env` next to `deadlock-tracker.exe`, not only in CWD |
+| “Could not detect Steam account” | Log into Steam; set `STEAM_PATH`; or use `--account-id` / `--match-id` |
+| Match never found in auto mode | Enter a match; wait up to `MAX_AUTO_WAIT_S`; optional Enter to launch with `-condebug` |
+| Wrong / stale match | Cache now prefers newest mtime; lower `CACHE_MAX_AGE_HOURS` if needed |
+| “Match not found” for a live id | Normal until top-200 / metadata; re-run after the game ends |
+| Names stay `Player_<id>` | Network/API issue; optional `STEAM_API_KEY`; check connectivity |
+| Slow after match found | Set `FETCH_WIN_RATES=0` for snappier UI |
+| `.env` ignored by exe | Put `.env` **next to** `deadlock-tracker.exe` (required for frozen builds) |
 
 ## License
 

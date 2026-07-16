@@ -91,8 +91,10 @@ class TestFindDeadlockInstall:
         )
         (steamapps_dir / "libraryfolders.vdf").write_text(vdf_content, encoding="utf-8")
 
-        # Redirect the PROGRAMFILES(X86) env var so steam_roots includes our fake Steam root
-        monkeypatch.setenv("PROGRAMFILES(X86)", str(tmp_path))
+        # Point shared Steam discovery at our fake root (cross-platform)
+        monkeypatch.setattr(
+            "modules.steam_paths.get_steam_root", lambda: steam_root
+        )
 
         result = _find_deadlock_install()
         assert result == deadlock_dir

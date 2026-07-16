@@ -115,6 +115,52 @@ class TestFindActiveMatch:
             result = await find_active_match(100, client)
         assert result is None
 
+    async def test_picks_newest_history_row(self):
+        history = [
+            {"match_id": 10, "start_time": 100, "player_team": 0},
+            {"match_id": 99, "start_time": 500, "player_team": 0},
+            {"match_id": 50, "start_time": 200, "player_team": 0},
+        ]
+        full = {
+            "match_id": 99,
+            "match_info": {"players": [{"account_id": 100, "team": 0}]},
+        }
+        transport = _mock_transport({
+            "/v1/matches/active": (200, []),
+            "/v1/players/100/match-history": (200, history),
+            "/v1/matches/99/metadata": (200, full),
+        })
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            result = await find_active_match(100, client)
+        assert result is not None
+        assert result["match_id"] == 99
+
+    async def test_active_never_sends_account_id_query(self):
+        requests_made = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests_made.append((request.url.path, str(request.url.query)))
+            if request.url.path == "/v1/matches/active":
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "match_id": 1,
+                            "players": [{"account_id": 100, "team": 0}],
+                        }
+                    ],
+                )
+            return httpx.Response(404)
+
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="https://test"
+        ) as client:
+            result = await find_active_match(100, client)
+        assert result is not None
+        active_queries = [q for p, q in requests_made if p == "/v1/matches/active"]
+        assert active_queries
+        assert all("account_id" not in q for q in active_queries)
+
 
 @pytest.mark.asyncio
 class TestGetActiveMatches:

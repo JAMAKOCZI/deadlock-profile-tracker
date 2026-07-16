@@ -23,6 +23,10 @@ class Match:
     net_worth_team_1: int = 0
     winning_team: Optional[int] = None
     players: List[Player] = field(default_factory=list)
+    # True when only a single-player history row was available
+    is_partial: bool = False
+    # True when data came from finished-match metadata
+    from_metadata: bool = False
 
     @property
     def team_0(self) -> List[Player]:
@@ -36,5 +40,12 @@ class Match:
 
     @property
     def is_active(self) -> bool:
-        """Whether the match is still in progress."""
+        """Whether the match appears still in progress."""
+        if self.is_partial:
+            return False
+        if self.from_metadata and self.winning_team is not None:
+            return False
+        if self.from_metadata and self.duration_s > 0 and self.winning_team is None:
+            # Finished metadata without winner field — not "live"
+            return False
         return self.winning_team is None
